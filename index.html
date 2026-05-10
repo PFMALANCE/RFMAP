@@ -85,16 +85,13 @@
   </div>
 </div>
 
-<!-- Leaflet -->
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-<!-- Leaflet.heat -->
 <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
-<!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-functions-compat.js"></script>
 
 <script>
-  // Firebase初期化
   const firebaseConfig = {
     apiKey: "AIzaSyC2yZD6koC2StXCf4VH-9S_2mO9y7eH6po",
     authDomain: "rftown-wanted-analysis.firebaseapp.com",
@@ -108,7 +105,6 @@
   const db = firebase.database();
   const wantedRef = db.ref('wanted');
 
-  // マップ初期化
   const imageWidth  = 4000;
   const imageHeight = 6000;
 
@@ -118,10 +114,9 @@
   });
 
   const bounds = [[0, 0], [imageHeight, imageWidth]];
-  L.imageOverlay('rfmap.jpg', bounds).addTo(map);
+  L.imageOverlay('rfmap.png', bounds).addTo(map);
   map.fitBounds(bounds);
 
-  // レイヤー
   const layers = {
     drugcollection: L.layerGroup().addTo(map),
     druglab:        L.layerGroup().addTo(map),
@@ -137,7 +132,6 @@
       .addTo(layers[layerName]);
   }
 
-  // ピン
   addPin('drugcollection', 400, 600, 'オウムポピー', 'a');
   addPin('drugcollection', 400, 600, 'エクスタシー', 'a');
   addPin('drugcollection', 400, 600, '水酸化ナトリウム', 'a');
@@ -245,8 +239,34 @@
   addPin('ganghideout', 400, 600, 'ピンクアジト', 'a');
   addPin('ganghideout', 400, 600, '茶色アジト', 'a');
 
-  // レイヤー切替
+  // ===========================
+  //   パスワード照合
+  // ===========================
+  let drugUnlocked = false;
+  const drugGroups = ['drugcollection', 'druglab', 'drugdealer'];
+
   function toggleLayer(name, btn) {
+    if (drugGroups.includes(name) && !drugUnlocked) {
+      const input = prompt('パスワードを入力してください');
+      if (input === null) return;
+
+      // Firebaseのconfigと照合
+      db.ref('config/drugPassword').once('value').then(function(snapshot) {
+        const correct = snapshot.val();
+        if (input === correct) {
+          drugUnlocked = true;
+          // 認証成功後にレイヤーを切り替える
+          doToggleLayer(name, btn);
+        } else {
+          alert('パスワードが違います');
+        }
+      });
+      return;
+    }
+    doToggleLayer(name, btn);
+  }
+
+  function doToggleLayer(name, btn) {
     if (map.hasLayer(layers[name])) {
       map.removeLayer(layers[name]);
       btn.classList.replace('active', 'inactive');
@@ -295,7 +315,7 @@
   wantedRef.on('value', function(snapshot) {
     allWantedData = snapshot.val() || {};
 
-    Object.values(wantedMarkers).forEach(m => map.removeLayer(m));
+    Object.values(wantedMarkers).forEach(function(m) { map.removeLayer(m); });
     wantedMarkers = {};
 
     const heatData = [];
