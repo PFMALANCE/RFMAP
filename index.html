@@ -8,7 +8,503 @@
     html, body { margin: 0; height: 100%; }
     #map { width: 100%; height: 100%; }
     #controls {
+      position: fixed;<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>RF Town Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <style>
+    html, body { margin: 0; height: 100%; }
+    #map { width: 100%; height: 100%; }
+    #controls {
       position: fixed;
+      top: 10px;
+      right: 10px;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .ctrl-btn {
+      padding: 8px 14px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+    }
+    .ctrl-btn.active   { opacity: 1; outline: 3px solid #fff; }
+    .ctrl-btn.inactive { opacity: 0.4; outline: none; }
+    #stats-panel {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      z-index: 1000;
+      background: rgba(0,0,0,0.8);
+      color: #fff;
+      padding: 16px 20px;
+      border-radius: 10px;
+      font-size: 14px;
+      min-width: 200px;
+      display: none;
+    }
+    #stats-panel h3 { margin: 0 0 10px; font-size: 15px; }
+    #stats-panel .stat-row { display: flex; justify-content: space-between; margin-bottom: 6px; }
+    #stats-panel .stat-val { font-weight: bold; color: #ef4444; }
+
+    /* パスワードモーダル */
+    #pw-modal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.6);
+      z-index: 2000;
+      align-items: center;
+      justify-content: center;
+    }
+    #pw-modal.show { display: flex; }
+    #pw-box {
+      background: #1e293b;
+      color: #fff;
+      padding: 24px 28px;
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-width: 260px;
+    }
+    #pw-box h3 { margin: 0; font-size: 15px; }
+    #pw-input {
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: none;
+      font-size: 14px;
+      background: #334155;
+      color: #fff;
+    }
+    #pw-error { color: #ef4444; font-size: 13px; display: none; }
+    .pw-btns { display: flex; gap: 8px; }
+    .pw-btns button {
+      flex: 1;
+      padding: 8px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: bold;
+    }
+    #pw-ok     { background: #a855f7; color: #fff; }
+    #pw-cancel { background: #475569; color: #fff; }
+  </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<!-- パスワードモーダル -->
+<div id="pw-modal">
+  <div id="pw-box">
+    <h3>🔒 パスワードを入力</h3>
+    <input id="pw-input" type="password" placeholder="パスワード" />
+    <div id="pw-error">パスワードが違います</div>
+    <div class="pw-btns">
+      <button id="pw-cancel" onclick="closePwModal()">キャンセル</button>
+      <button id="pw-ok" onclick="submitPassword()">OK</button>
+    </div>
+  </div>
+</div>
+
+<div id="controls">
+  <!-- 薬物系：最初はinactive（非表示状態） -->
+  <button class="ctrl-btn inactive" style="background:#a855f7;color:#fff"
+          onclick="toggleLayer('drugcollection', this)">🪻 薬物採取🔒</button>
+  <button class="ctrl-btn inactive" style="background:#ec4899;color:#fff"
+          onclick="toggleLayer('druglab', this)">🧪 薬物生成所🔒</button>
+  <button class="ctrl-btn inactive" style="background:#f97316;color:#fff"
+          onclick="toggleLayer('drugdealer', this)">🧍 薬物売人🔒</button>
+
+  <button class="ctrl-btn active" style="background:#ef4444;color:#fff"
+          onclick="toggleLayer('crime', this)">☠️ 犯罪現場</button>
+  <button class="ctrl-btn active" style="background:#eab308;color:#fff"
+          onclick="toggleLayer('exchange', this)">💰 換金所</button>
+  <button class="ctrl-btn active" style="background:#64748b;color:#fff"
+          onclick="toggleLayer('ganghideout', this)">🏰 ギャングアジト</button>
+
+  <div style="border-top:1px solid rgba(255,255,255,0.3);margin:4px 0;"></div>
+
+  <button id="wanted-btn" class="ctrl-btn inactive" style="background:#ef4444;color:#fff"
+          onclick="toggleWantedMode()">🔴 指名手配記録</button>
+  <button id="wanted-layer-btn" class="ctrl-btn inactive" style="background:#dc2626;color:#fff"
+          onclick="toggleWantedLayer(this)">📍 発見ピン表示</button>
+  <button id="heat-btn" class="ctrl-btn inactive" style="background:#f97316;color:#fff" data-on="false"
+          onclick="toggleHeat()">🌡️ ヒートマップ</button>
+  <button id="stats-btn" class="ctrl-btn inactive" style="background:#1e293b;color:#fff"
+          onclick="toggleStats()">📊 統計</button>
+</div>
+
+<div id="stats-panel">
+  <h3>📊 指名手配 統計</h3>
+  <div class="stat-row">
+    <span>総発見数</span>
+    <span class="stat-val" id="stats-count">0</span>
+  </div>
+  <div class="stat-row">
+    <span>最多時間帯</span>
+    <span class="stat-val" id="stats-peak">-</span>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyC2yZD6koC2StXCf4VH-9S_2mO9y7eH6po",
+    authDomain: "rftown-wanted-analysis.firebaseapp.com",
+    databaseURL: "https://rftown-wanted-analysis-default-rtdb.firebaseio.com",
+    projectId: "rftown-wanted-analysis",
+    storageBucket: "rftown-wanted-analysis.firebasestorage.app",
+    messagingSenderId: "450886207660",
+    appId: "1:450886207660:web:f1d50ff08970eca5bcf709"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+  const wantedRef = db.ref('wanted');
+
+  const imageWidth  = 4000;
+  const imageHeight = 6000;
+
+  const map = L.map('map', {
+    crs: L.CRS.Simple,
+    minZoom: -2
+  });
+
+  const bounds = [[0, 0], [imageHeight, imageWidth]];
+  L.imageOverlay('rfmap4.jpg', bounds).addTo(map);
+  map.fitBounds(bounds);
+
+  const layers = {
+    drugcollection: L.layerGroup(), // 最初はmapに追加しない
+    druglab:        L.layerGroup(),
+    drugdealer:     L.layerGroup(),
+    crime:          L.layerGroup().addTo(map),
+    exchange:       L.layerGroup().addTo(map),
+    ganghideout:    L.layerGroup().addTo(map),
+  };
+
+  function addPin(layerName, y, x, title, detail) {
+    L.marker([y, x])
+      .bindPopup('<b>' + title + '</b><br>' + detail)
+      .addTo(layers[layerName]);
+  }
+
+  addPin('drugcollection', 400, 600, 'オウムポピー', 'a');
+  addPin('drugcollection', 400, 600, 'エクスタシー', 'a');
+  addPin('drugcollection', 400, 600, '水酸化ナトリウム', 'a');
+  addPin('drugcollection', 400, 600, '精製水', 'a');
+  addPin('drugcollection', 400, 600, '採取②', 'a');
+  addPin('drugcollection', 400, 600, '採取②', 'a');
+  addPin('drugcollection', 400, 600, '採取②', 'a');
+  addPin('drugcollection', 400, 600, '採取②', 'a');
+  addPin('drugcollection', 400, 600, '採取②', 'a');
+  addPin('drugcollection', 400, 600, '採取②', 'a');
+  addPin('drugcollection', 400, 600, '採取②', 'a');
+
+  addPin('druglab', 400, 600, '生成所①', 'a');
+  addPin('druglab', 400, 600, '生成所②', 'a');
+
+  addPin('drugdealer', 400, 600, '売人①', 'a');
+  addPin('drugdealer', 400, 600, '売人②', 'a');
+
+  addPin('crime', 1103, 1788, 'アーティファクト', '大型');
+  addPin('crime', 4522, 3540, 'バージ', '大型');
+  addPin('crime', 892,  1365, '飛行場', '大型');
+  addPin('crime', 5176, 756,  'オイルリグ', '大型');
+  addPin('crime', 1977, 1837, 'ユニオン', '大型');
+  addPin('crime', 2221, 2261, 'アングラ', '大型');
+  addPin('crime', 2063, 1236, 'メイズバンク', '大型');
+  addPin('crime', 2015, 1609, '大型金庫', '大型');
+  addPin('crime', 2966, 2994, 'トレイン', '大型');
+  addPin('crime', 1352, 2238, 'ボブキャット', '大型');
+  addPin('crime', 2326, 2288, 'カジノ', '超大型');
+  addPin('crime', 2369, 1956, 'パシフィック', '超大型');
+  addPin('crime', 2165, 1571, '宝石店', '中型');
+  addPin('crime', 400,  600,  'ドラッグボート', '中型');
+  addPin('crime', 3902, 3419, 'ヒューメイン', '中型');
+  addPin('crime', 2772, 2479, '絵画', '中型');
+  addPin('crime', 1816, 945,  '客船', '中型');
+  addPin('crime', 5345, 1884, '密輸①', '中型');
+  addPin('crime', 4406, 3057, '密輸②', '中型');
+  addPin('crime', 2984, 2860, '密輸③', '中型');
+  addPin('crime', 2405, 2665, '密輸④', '中型');
+  addPin('crime', 3402, 816,  '密輸⑤', '中型');
+  addPin('crime', 1914, 2013, 'ウィード', '準中型');
+  addPin('crime', 2117, 1299, 'ベタ', '準中型');
+  addPin('crime', 1446, 2036, '両替所', '準中型');
+  addPin('crime', 5107, 1794, 'パレト', '準中型');
+  addPin('crime', 1817, 1908, 'フリーカ①', '準中型');
+  addPin('crime', 2148, 1972, 'フリーカ②', '準中型');
+  addPin('crime', 2221, 1776, 'フリーカ③', '準中型');
+  addPin('crime', 2125, 1314, 'フリーカ④', '準中型');
+  addPin('crime', 2477, 551,  'フリーカ⑤', '準中型');
+  addPin('crime', 3458, 2355, 'フリーカ⑥', '準中型');
+  addPin('crime', 2140, 2357, '店舗①', '小型');
+  addPin('crime', 1845, 2340, '店舗②', '小型');
+  addPin('crime', 2418, 2017, '店舗③', '小型');
+  addPin('crime', 1692, 1820, '店舗④', '小型');
+  addPin('crime', 1505, 1813, '店舗⑤', '小型');
+  addPin('crime', 1896, 1527, '店舗⑥', '小型');
+  addPin('crime', 1886, 1326, '店舗⑦', '小型');
+  addPin('crime', 2096, 1201, '店舗⑧', '小型');
+  addPin('crime', 2626, 1055, '店舗⑨', '小型');
+  addPin('crime', 2447, 547,  '店舗⑩', '小型');
+  addPin('crime', 2518, 504,  '店舗⑪', '小型');
+  addPin('crime', 2721, 415,  '店舗⑫', '小型');
+  addPin('crime', 5093, 2583, '店舗⑬', '小型');
+  addPin('crime', 4405, 2589, '店舗⑭', '小型');
+  addPin('crime', 3926, 2715, '店舗⑮', '小型');
+  addPin('crime', 3855, 2444, '店舗⑯', '小型');
+  addPin('crime', 3459, 2353, '店舗⑰', '小型');
+  addPin('crime', 3442, 2088, '店舗⑱', '小型');
+  addPin('crime', 2408, 2966, '店舗⑲', '小型');
+  addPin('crime', 400,  600,  'ATM①', '小型');
+  addPin('crime', 400,  600,  'ATM②', '小型');
+  addPin('crime', 400,  600,  'ATM③', '小型');
+  addPin('crime', 400,  600,  'ATM④', '小型');
+  addPin('crime', 400,  600,  'ATM⑤', '小型');
+  addPin('crime', 400,  600,  '家①', '小型');
+  addPin('crime', 400,  600,  '家②', '小型');
+  addPin('crime', 400,  600,  '家③', '小型');
+  addPin('crime', 400,  600,  '家④', '小型');
+  addPin('crime', 400,  600,  '家⑤', '小型');
+  addPin('crime', 400,  600,  '家⑥', '小型');
+  addPin('crime', 400,  600,  '家⑦', '小型');
+  addPin('crime', 400,  600,  '家⑧', '小型');
+  addPin('crime', 400,  600,  '家⑨', '小型');
+  addPin('crime', 400,  600,  '家⑩', '小型');
+  addPin('crime', 400,  600,  '家⑪', '小型');
+
+  addPin('exchange', 400, 600, '換金①', '通常');
+  addPin('exchange', 400, 600, '換金②', '通常');
+  addPin('exchange', 400, 600, '換金③', '通常');
+  addPin('exchange', 400, 600, '換金④', '通常');
+  addPin('exchange', 400, 600, '換金⑤', '通常');
+  addPin('exchange', 400, 600, '換金⑥', '通常');
+  addPin('exchange', 400, 600, '換金⑦', '通常');
+  addPin('exchange', 400, 600, '換金⑧', '通常');
+  addPin('exchange', 400, 600, '換金⑨', '特殊');
+  addPin('exchange', 400, 600, '換金⑩', '特殊');
+
+  addPin('ganghideout', 400, 600, '灰色アジト', 'a');
+  addPin('ganghideout', 400, 600, '黄色アジト', 'a');
+  addPin('ganghideout', 400, 600, '緑アジト', 'a');
+  addPin('ganghideout', 400, 600, '水色アジト', 'a');
+  addPin('ganghideout', 400, 600, '紺色アジト', 'a');
+  addPin('ganghideout', 400, 600, 'オレンジアジト', 'a');
+  addPin('ganghideout', 400, 600, '赤アジト', 'a');
+  addPin('ganghideout', 400, 600, 'ピンクアジト', 'a');
+  addPin('ganghideout', 400, 600, '茶色アジト', 'a');
+
+  // ===========================
+  //   パスワード認証
+  // ===========================
+  let drugUnlocked = false;
+  let pendingBtn  = null;
+  let pendingName = null;
+  const drugGroups = ['drugcollection', 'druglab', 'drugdealer'];
+
+  function toggleLayer(name, btn) {
+    // 薬物系 かつ 未認証 かつ 今から有効にしようとしている場合のみパスワード要求
+    if (drugGroups.includes(name) && !drugUnlocked && !map.hasLayer(layers[name])) {
+      pendingBtn  = btn;
+      pendingName = name;
+      document.getElementById('pw-input').value = '';
+      document.getElementById('pw-error').style.display = 'none';
+      document.getElementById('pw-modal').classList.add('show');
+      setTimeout(function() { document.getElementById('pw-input').focus(); }, 100);
+      return;
+    }
+    doToggle(name, btn);
+  }
+
+  function submitPassword() {
+    const input = document.getElementById('pw-input').value;
+    db.ref('config/drugPassword').once('value').then(function(snapshot) {
+      const correct = snapshot.val();
+      if (input === correct) {
+        drugUnlocked = true;
+        closePwModal();
+        doToggle(pendingName, pendingBtn);
+      } else {
+        document.getElementById('pw-error').style.display = 'block';
+        document.getElementById('pw-input').value = '';
+        document.getElementById('pw-input').focus();
+      }
+    });
+  }
+
+  function closePwModal() {
+    document.getElementById('pw-modal').classList.remove('show');
+    pendingBtn  = null;
+    pendingName = null;
+  }
+
+  document.getElementById('pw-input').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') submitPassword();
+  });
+
+  function doToggle(name, btn) {
+    if (map.hasLayer(layers[name])) {
+      map.removeLayer(layers[name]);
+      btn.classList.replace('active', 'inactive');
+    } else {
+      layers[name].addTo(map);
+      btn.classList.replace('inactive', 'active');
+    }
+  }
+
+  // ===========================
+  //   指名手配記録
+  // ===========================
+  let wantedMode    = false;
+  let wantedVisible = false;
+  let heatLayer     = null;
+  let wantedMarkers = {};
+  let allWantedData = {};
+  const wantedLayerGroup = L.layerGroup(); // 発見ピン用レイヤー（最初は非表示）
+
+  function toggleWantedMode() {
+    wantedMode = !wantedMode;
+    const btn = document.getElementById('wanted-btn');
+    if (wantedMode) {
+      btn.classList.replace('inactive', 'active');
+      btn.textContent = '🔴 記録モードON';
+      map.getContainer().style.cursor = 'crosshair';
+    } else {
+      btn.classList.replace('active', 'inactive');
+      btn.textContent = '🔴 指名手配記録';
+      map.getContainer().style.cursor = '';
+    }
+  }
+
+  function toggleWantedLayer(btn) {
+    wantedVisible = !wantedVisible;
+    if (wantedVisible) {
+      wantedLayerGroup.addTo(map);
+      btn.classList.replace('inactive', 'active');
+    } else {
+      map.removeLayer(wantedLayerGroup);
+      btn.classList.replace('active', 'inactive');
+    }
+  }
+
+  map.on('click', function(e) {
+    if (!wantedMode) {
+      var y = Math.round(e.latlng.lat);
+      var x = Math.round(e.latlng.lng);
+      L.popup()
+        .setLatLng(e.latlng)
+        .setContent('y: ' + y + ', x: ' + x)
+        .openOn(map);
+      return;
+    }
+    const timestamp = new Date().toLocaleString('ja-JP');
+    wantedRef.push({ y: e.latlng.lat, x: e.latlng.lng, time: timestamp });
+    wantedMode = false;
+    toggleWantedMode();
+  });
+
+  wantedRef.on('value', function(snapshot) {
+    allWantedData = snapshot.val() || {};
+
+    // 既存マーカーを削除
+    Object.values(wantedMarkers).forEach(function(m) {
+      wantedLayerGroup.removeLayer(m);
+    });
+    wantedMarkers = {};
+
+    const heatData = [];
+
+    Object.entries(allWantedData).forEach(function([key, data]) {
+      const marker = L.circleMarker([data.y, data.x], {
+        radius: 8,
+        fillColor: '#ef4444',
+        color: '#fff',
+        weight: 2,
+        fillOpacity: 0.9
+      }).bindPopup(
+        '<b>発見記録</b><br>時刻: ' + data.time +
+        '<br><button onclick="deleteWanted(\'' + key + '\')" ' +
+        'style="margin-top:6px;padding:4px 10px;background:#ef4444;color:#fff;border:none;border-radius:4px;cursor:pointer">削除</button>'
+      ).addTo(wantedLayerGroup);
+
+      wantedMarkers[key] = marker;
+      heatData.push([data.y, data.x, 1]);
+    });
+
+    if (heatLayer) map.removeLayer(heatLayer);
+    if (heatData.length > 0) {
+      heatLayer = L.heatLayer(heatData, {
+        radius: 60,
+        blur: 40,
+        maxZoom: 2,
+        gradient: { 0.4: 'blue', 0.6: 'yellow', 0.8: 'orange', 1.0: 'red' }
+      });
+      if (document.getElementById('heat-btn').dataset.on === 'true') {
+        heatLayer.addTo(map);
+      }
+    }
+
+    updateStats();
+  });
+
+  function deleteWanted(key) {
+    db.ref('wanted/' + key).remove();
+  }
+
+  function updateStats() {
+    const count = Object.keys(allWantedData).length;
+    document.getElementById('stats-count').textContent = count;
+    const hourMap = {};
+    Object.values(allWantedData).forEach(function(d) {
+      const hour = d.time ? d.time.split(' ')[1].split(':')[0] + '時台' : '不明';
+      hourMap[hour] = (hourMap[hour] || 0) + 1;
+    });
+    const top = Object.entries(hourMap).sort(function(a, b) { return b[1] - a[1]; })[0];
+    document.getElementById('stats-peak').textContent = top ? top[0] + '（' + top[1] + '件）' : '-';
+  }
+
+  function toggleHeat() {
+    const btn = document.getElementById('heat-btn');
+    if (btn.dataset.on === 'true') {
+      if (heatLayer) map.removeLayer(heatLayer);
+      btn.dataset.on = 'false';
+      btn.classList.replace('active', 'inactive');
+    } else {
+      if (heatLayer) heatLayer.addTo(map);
+      btn.dataset.on = 'true';
+      btn.classList.replace('inactive', 'active');
+    }
+  }
+
+  function toggleStats() {
+    const panel  = document.getElementById('stats-panel');
+    const btn    = document.getElementById('stats-btn');
+    const isOpen = panel.style.display === 'block';
+    panel.style.display = isOpen ? 'none' : 'block';
+    if (isOpen) {
+      btn.classList.replace('active', 'inactive');
+    } else {
+      btn.classList.replace('inactive', 'active');
+    }
+  }
+</script>
+</body>
+</html>
       top: 10px;
       right: 10px;
       z-index: 1000;
