@@ -35,9 +35,9 @@
 
 <div id="controls">
   <button class="ctrl-btn inactive" style="background:#a855f7;color:#fff"
-          onclick="toggleLayer('drugcollection', this)">🪻 薬物採取</button>
+          offclick="toggleLayer('drugcollection', this)">🪻 薬物採取🚫</button>
   <button class="ctrl-btn inactive" style="background:#ec4899;color:#fff"
-          onclick="toggleLayer('druglab', this)">🧪 薬物生成所</button>
+          offclick="toggleLayer('druglab', this)">🧪 薬物生成所🚫</button>
   <button class="ctrl-btn active" style="background:#f97316;color:#fff"
           onclick="toggleLayer('drugdealer', this)">🧍 固定NPC</button>
   <button class="ctrl-btn active" style="background:#ef4444;color:#fff"
@@ -45,7 +45,7 @@
   <button class="ctrl-btn active" style="background:#eab308;color:#fff"
           onclick="toggleLayer('exchange', this)">💰 換金所</button>
   <button class="ctrl-btn inactive" style="background:#64748b;color:#fff"
-          onclick="toggleLayer('ganghideout', this)">🏰 ギャングアジト</button>
+          offclick="toggleLayer('ganghideout', this)">🏰 ギャングアジト🚫</button>
 </div>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
